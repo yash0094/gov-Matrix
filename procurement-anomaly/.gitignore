@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+data/raw/*
+!data/raw/.gitkeep
+data/cache/*.json
+.DS_Store
+.ipynb_checkpoints/
+*.parquet
