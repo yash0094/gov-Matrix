@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Procurement case queue</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#faf9f7; --card:#fff; --ink:#1a1a19; --ink2:#5f5e5a; --ink3:#8a8a84;
+    --line:#e5e3dc; --accent:#185fa5; --accent-bg:#e6f1fb;
+    --warn:#854f0b; --warn-bg:#faeeda; --danger:#a32d2d; --danger-bg:#fceaea;
+    --ok:#3b6d11; --ok-bg:#eaf3de;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  a{color:var(--accent)}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 64px}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+         flex-wrap:wrap;margin-bottom:18px}
+  h1{font-size:20px;font-weight:500;margin:0}
+  .sub{font-size:13px;color:var(--ink3);font-family:ui-monospace,SFMono-Regular,monospace}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+        padding:18px 20px;margin-bottom:18px}
+  .banner{background:var(--accent-bg);border-radius:8px;padding:11px 15px;
+          font-size:14px;color:#0c447c;margin-bottom:16px}
+  .controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  label{font-size:13px;color:var(--ink2)}
+  input[type=range]{width:200px}
+  select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);
+         border-radius:8px;background:#fff}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+           gap:12px;margin-bottom:18px}
+  .metric{background:var(--bg);border-radius:8px;padding:12px 14px}
+  .metric .k{font-size:12px;color:var(--ink2);margin-bottom:4px}
+  .metric .v{font-size:23px;font-weight:500;font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-size:12px;font-weight:400;color:var(--ink3);text-align:left;padding:8px 6px}
+  td{padding:11px 6px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:var(--bg)}
+  tbody tr.sel{background:var(--accent-bg)}
+  .pill{font-size:11px;padding:2px 8px;border-radius:8px;white-space:nowrap}
+  .p-ok{background:var(--ok-bg);color:var(--ok)}
+  .p-warn{background:var(--warn-bg);color:var(--warn)}
+  .p-dim{background:var(--bg);color:var(--ink3)}
+  .p-danger{background:var(--danger-bg);color:var(--danger)}
+  .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-size:13px}
+  .bar-row .nm{width:100px;flex:none;color:var(--ink2)}
+  .bar{height:14px;background:#2a78d6;border-radius:0 4px 4px 0;min-width:2px}
+  .bar.neg{background:#c3c2b7}
+  .bar-row .pc{font-size:12px;color:var(--ink3);font-family:ui-monospace,monospace}
+  .counter{border:1px solid #f0d9a8;border-radius:8px;padding:12px 14px;margin-top:14px}
+  .counter h4{margin:0 0 8px;font-size:12px;font-weight:500;color:var(--warn)}
+  .counter ul{margin:0;padding-left:18px;font-size:13px;color:var(--ink2)}
+  .disclaimer{font-size:12px;color:var(--ink3);margin:14px 0 12px}
+  button{font:inherit;font-size:13px;padding:7px 14px;border:1px solid #c9c7bf;
+         background:#fff;border-radius:8px;cursor:pointer}
+  button:hover{background:var(--bg)}
+  button.on{background:var(--accent-bg);border-color:#9cc2e8;color:#0c447c}
+  .toggle{display:flex;gap:6px;margin-bottom:10px}
+  .empty{color:var(--ink3);font-size:14px;padding:24px 0;text-align:center}
+  .err{background:var(--danger-bg);color:var(--danger);padding:14px 16px;
+       border-radius:8px;font-size:14px;font-family:ui-monospace,monospace}
+  svg text{font-size:10px;fill:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <h1>Procurement case queue</h1>
+    <div class="sub" id="meta">loading…</div>
+  </div>
+  <a href="/docs" target="_blank">API docs</a>
+</header>
+
+<div id="boot"></div>
+
+<div class="card" id="queue-card" hidden>
+  <div class="banner" id="banner"></div>
+
+  <div class="controls">
+    <label for="q">Tolerance q</label>
+    <input type="range" id="q" min="0.05" max="1" step="0.05" value="0.2" />
+    <span id="qv" style="font-variant-numeric:tabular-nums;font-size:13px">0.20</span>
+    <select id="cat"><option value="">All categories</option></select>
+    <select id="reg"><option value="">All regions</option></select>
+  </div>
+
+  <div class="metrics" id="metrics"></div>
+
+  <table>
+    <thead><tr>
+      <th style="width:30%">Case</th><th>Tenders</th><th style="text-align:right">Value</th>
+      <th style="text-align:right">Z</th><th style="text-align:right">q</th><th>Peers</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="empty" id="empty" hidden>No cases at this tolerance. Raise q.</div>
+</div>
+
+<div class="grid2" id="detail" hidden>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+      <div>
+        <div style="font-size:16px;font-weight:500" id="d-title"></div>
+        <div class="sub" id="d-sub" style="margin-top:4px"></div>
+      </div>
+      <span class="pill p-danger" id="d-z"></span>
+    </div>
+
+    <div style="font-size:13px;color:var(--ink2);margin:16px 0 9px">Contributing signals</div>
+    <div id="bars"></div>
+
+    <div class="metrics" style="margin-top:16px">
+      <div class="metric"><div class="k">Peer median unit price</div>
+        <div class="v" id="d-peer"></div><div class="k" id="d-delta"></div></div>
+      <div class="metric"><div class="k">Ripple</div>
+        <div class="v" id="d-ripple"></div><div class="k" id="d-ripple2"></div></div>
+    </div>
+
+    <div class="counter"><h4>Counter-evidence</h4><ul id="counter"></ul></div>
+    <div class="disclaimer" id="d-disc"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button data-v="reviewed">Reviewed</button>
+      <button data-v="explained">Explained</button>
+      <button data-v="escalated">Escalated</button>
+      <span id="fb" style="font-size:13px;color:var(--ok);align-self:center"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:16px;font-weight:500;margin-bottom:10px">Peer comparison</div>
+    <div class="toggle">
+      <button id="t-peer" class="on">Within peer group</button>
+      <button id="t-nat">Against national</button>
+    </div>
+    <div style="position:relative;height:230px"><canvas id="chart"></canvas></div>
+    <div class="sub" id="chart-sub" style="margin-top:8px"></div>
+
+    <div style="font-size:16px;font-weight:500;margin:22px 0 8px">Entity graph</div>
+    <div id="net"></div>
+  </div>
+</div>
+
+<div class="card" id="val-card" hidden>
+  <div style="font-size:16px;font-weight:500;margin-bottom:4px">Red-team validation</div>
+  <div class="sub" style="margin-bottom:12px">Known collusion patterns injected into the
+    data, then scored blind. No ground truth exists in real procurement data, so this is
+    how the numbers are earned.</div>
+  <div id="val"></div>
+</div>
+
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmtCr = v => "\u20B9" + (v/1e7).toFixed(1) + " cr";
+const fmtN  = v => "\u20B9" + Math.round(v).toLocaleString("en-IN");
+let CASES = [], SEL = null, CHART = null, PC = null, MODE = "peer";
+
+async function get(u){
+  const r = await fetch(u);
+  if(!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+}
+
+async function boot(){
+  try{
+    const m = await get("/api/validation");
+    $("#meta").textContent = `${m.n_tenders.toLocaleString()} tenders · ${m.n_cases} cases · model ${m.model_version}`;
+    $("#queue-card").hidden = false;
+    $("#val-card").hidden = false;
+    renderValidation(m);
+    await load();
+  }catch(e){
+    $("#boot").innerHTML = `<div class="err">${e.message}</div>`;
+  }
+}
+
+async function load(){
+  const q = parseFloat($("#q").value);
+  const p = new URLSearchParams({q_max:q, limit:200});
+  if($("#cat").value) p.set("category", $("#cat").value);
+  if($("#reg").value) p.set("region", $("#reg").value);
+  const d = await get("/api/cases?"+p);
+  CASES = d.cases;
+  $("#banner").textContent =
+    `Showing ${d.n_cases} case${d.n_cases===1?"":"s"} at q \u2264 ${q.toFixed(2)}. ` +
+    `Expect about ${d.expected_false_discoveries.toFixed(0)} to be false alarms.`;
+  const val = CASES.reduce((a,c)=>a+c.case_value,0);
+  $("#metrics").innerHTML = [
+    ["Cases in queue", d.n_cases],
+    ["Value in scope", fmtCr(val)],
+    ["Stated FDR", (q*100).toFixed(0)+"%"]
+  ].map(([k,v])=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  fillFilters();
+  renderRows();
+}
+
+function fillFilters(){
+  for(const [sel,key] of [["#cat","category"],["#reg","region"]]){
+    const el = $(sel);
+    if(el.dataset.done) continue;
+    const vals = [...new Set(CASES.map(c=>c[key]).filter(Boolean))].sort();
+    vals.forEach(v=>{ const o=document.createElement("option"); o.value=o.textContent=v; el.append(o); });
+    el.dataset.done = "1";
+  }
+}
+
+function peerPill(conf){
+  if(conf >= 0.95) return '<span class="pill p-ok">L0 full</span>';
+  if(conf >= 0.8)  return '<span class="pill p-warn">L1 wide</span>';
+  return '<span class="pill p-dim">widened</span>';
+}
+
+function renderRows(){
+  const tb = $("#rows"); tb.innerHTML = "";
+  $("#empty").hidden = CASES.length > 0;
+  CASES.slice(0,60).forEach(c=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span style="font-weight:500">${c.buyer}</span><br>
+          <span style="font-size:12px;color:var(--ink2)">${c.category.replace(/_/g," ")}</span></td>
+      <td>${c.n_tenders}</td>
+      <td style="text-align:right">${fmtCr(c.case_value)}</td>
+      <td style="text-align:right;font-weight:500">${c.Z_case.toFixed(2)}</td>
+      <td style="text-align:right">${c.q_value < 0.001 ? c.q_value.toExponential(1) : c.q_value.toFixed(3)}</td>
+      <td>${peerPill(c.peer_confidence)}</td>`;
+    tr.onclick = ()=>{ [...tb.children].forEach(r=>r.classList.remove("sel"));
+                       tr.classList.add("sel"); open(c.case_id); };
+    tb.append(tr);
+  });
+}
+
+async function open(id){
+  SEL = id;
+  const [d, pc, rp] = await Promise.all([
+    get(`/api/cases/${encodeURIComponent(id)}`),
+    get(`/api/cases/${encodeURIComponent(id)}/peer-comparison`),
+    get(`/api/cases/${encodeURIComponent(id)}/ripple`)
+  ]);
+  PC = pc;
+  $("#detail").hidden = false;
+  $("#d-title").textContent = `${d.buyer} \u00B7 ${d.category.replace(/_/g," ")}`;
+  $("#d-sub").textContent = `${d.exemplar_ocid} \u00B7 ${d.peer_comparison.peer_level} (n=${d.peer_comparison.peer_n}) \u00B7 ${d.n_tenders} tenders`;
+  $("#d-z").textContent = `Z ${d.z_case.toFixed(2)} \u00B7 q ${d.q_value < .001 ? d.q_value.toExponential(1) : d.q_value.toFixed(3)}`;
+
+  const max = Math.max(...d.signal_breakdown.map(s=>Math.abs(s.contribution)), .01);
+  $("#bars").innerHTML = d.signal_breakdown.map(s=>`
+    <div class="bar-row">
+      <span class="nm">${s.signal.replace(/_/g," ")}</span>
+      <span class="bar${s.contribution<0?" neg":""}" style="width:${Math.abs(s.contribution)/max*58}%"></span>
+      <span class="pc">${(s.share*100).toFixed(0)}%</span>
+    </div>`).join("");
+
+  const p = d.peer_comparison;
+  $("#d-peer").textContent = p.peer_median_unit_price ? fmtN(p.peer_median_unit_price) : "\u2014";
+  if(p.peer_median_unit_price){
+    const dl = (p.this_unit_price/p.peer_median_unit_price - 1)*100;
+    $("#d-delta").innerHTML = `this award ${fmtN(p.this_unit_price)} \u00B7 <span style="color:${dl>0?"var(--danger)":"var(--ok)"}">${dl>0?"+":""}${dl.toFixed(0)}%</span>`;
+  }
+  $("#d-ripple").textContent = fmtCr(rp.connected_value_inr);
+  $("#d-ripple2").textContent = `${rp.connected_contracts} connected contracts \u00B7 ${rp.multiplier.toFixed(1)}\u00D7`;
+
+  $("#counter").innerHTML = d.signal_breakdown
+    .filter(s=>s.contribution>0.15 && s.counter_evidence)
+    .map(s=>`<li>${s.counter_evidence}</li>`).join("") || "<li>None surfaced.</li>";
+  $("#d-disc").textContent = d.disclaimer;
+  $("#fb").textContent = "";
+
+  drawChart();
+  drawNet(await get(`/api/cases/${encodeURIComponent(id)}/network`));
+}
+
+function hist(vals, bins=22){
+  const lo = Math.min(...vals), hi = Math.max(...vals), w = (hi-lo)/bins || 1;
+  const c = new Array(bins).fill(0);
+  vals.forEach(v=>c[Math.min(bins-1, Math.floor((v-lo)/w))]++);
+  return {counts:c, labels:c.map((_,i)=>Math.round(lo+w*(i+.5))), lo, w};
+}
+
+function drawChart(){
+  if(!PC) return;
+  const vals = MODE==="peer" ? PC.peer_prices : PC.national_prices;
+  const h = hist(vals);
+  const mine = Math.min(h.counts.length-1, Math.max(0, Math.floor((PC.this_value-h.lo)/h.w)));
+  if(CHART) CHART.destroy();
+  CHART = new Chart($("#chart"), {
+    type:"bar",
+    data:{ labels:h.labels.map(v=>v.toLocaleString("en-IN")),
+      datasets:[{ label:"tenders", data:h.counts, borderRadius:3,
+        backgroundColor:h.counts.map((_,i)=> i===mine ? "#e24b4a" : "#b5d4f4") }]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{title:i=>"unit price \u2248 \u20B9"+i[0].label}}},
+      scales:{x:{ticks:{maxTicksLimit:7,color:"#8a8a84"},grid:{display:false}},
+              y:{ticks:{color:"#8a8a84"},grid:{color:"#eceae3"}}}}
+  });
+  $("#chart-sub").textContent = MODE==="peer"
+    ? `${PC.peer_group} \u00B7 ${PC.peer_prices.length} comparable tenders. Red bar is this award.`
+    : `All tenders in this category nationally, ${PC.national_prices.length} of them. The same award, now unremarkable.`;
+}
+
+function drawNet(g){
+  const el = $("#net");
+  if(!g.nodes.length){ el.innerHTML = '<div class="sub">No bid-level data for this case.</div>'; return; }
+  const W=440,H=230, vend=g.nodes.filter(n=>n.type==="vendor").slice(0,14),
+        dirs=g.nodes.filter(n=>n.type==="director");
+  const pos={};
+  vend.forEach((n,i)=>{ const a=2*Math.PI*i/vend.length;
+    pos[n.id]=[W/2+Math.cos(a)*150, H/2+Math.sin(a)*88]; });
+  dirs.forEach((n,i)=>{ pos[n.id]=[W/2+(i-(dirs.length-1)/2)*54, H/2]; });
+  const edges = g.edges.filter(e=>pos[e.source]&&pos[e.target]);
+  const shared = {}; g.edges.forEach(e=>shared[e.target]=(shared[e.target]||0)+1);
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img"
+      aria-label="Entity graph of bidders linked to shared directors">
+    ${edges.map(e=>`<line x1="${pos[e.source][0]}" y1="${pos[e.source][1]}"
+        x2="${pos[e.target][0]}" y2="${pos[e.target][1]}"
+        stroke="${shared[e.target]>1?"#e24b4a":"#d3d1c7"}" stroke-width="${shared[e.target]>1?1.6:1}"/>`).join("")}
+    ${dirs.map(n=>`<circle cx="${pos[n.id][0]}" cy="${pos[n.id][1]}" r="${shared[n.id]>1?9:5}"
+        fill="${shared[n.id]>1?"#e24b4a":"#b4b2a9"}"/>`).join("")}
+    ${vend.map(n=>`<circle cx="${pos[n.id][0]}" cy="${pos[n.id][1]}" r="${4+Math.min(n.wins,6)}"
+        fill="#378add"/><text x="${pos[n.id][0]}" y="${pos[n.id][1]-11}"
+        text-anchor="middle">${n.wins}w</text>`).join("")}
+  </svg>
+  <div class="sub" style="margin-top:6px">Blue = bidder (size = wins). Red = a director
+  behind more than one bidder on the same tenders.</div>`;
+}
+
+function renderValidation(m){
+  if(!m.tender_level){ $("#val").innerHTML = '<div class="sub">Run on red-teamed data to populate.</div>'; return; }
+  const rows = m.tender_level.map(r=>
+    `<tr><td>top ${r.k}</td><td style="text-align:right">${(r.precision*100).toFixed(0)}%</td>
+     <td style="text-align:right">${(r.recall*100).toFixed(1)}%</td>
+     <td style="text-align:right">${r.lift.toFixed(1)}\u00D7</td></tr>`).join("");
+  const cl = (m.case_level||[]).map(r=>
+    `<tr><td>top ${r.k}</td><td style="text-align:right">${(r.precision*100).toFixed(0)}%</td>
+     <td style="text-align:right">${(r.recall*100).toFixed(0)}%</td><td></td></tr>`).join("");
+  const spec = m.specialised_markets.filter(s=>s.mean_bidders<3)
+    .map(s=>`<li>${s.category.replace(/_/g," ")}: ${s.mean_bidders.toFixed(1)} bidders average, ${s.flagged} of ${s.cases} cases flagged</li>`).join("");
+  $("#val").innerHTML = `
+    <div class="metrics">
+      <div class="metric"><div class="k">ROC-AUC</div><div class="v">${m.roc_auc.toFixed(3)}</div></div>
+      <div class="metric"><div class="k">Base rate</div><div class="v">${(m.base_rate*100).toFixed(1)}%</div></div>
+      <div class="metric"><div class="k">Cartel cells</div><div class="v">${m.n_cartel_cells}</div></div>
+    </div>
+    <div class="grid2">
+      <div><div style="font-size:13px;color:var(--ink2);margin-bottom:6px">Tender level</div>
+        <table><thead><tr><th></th><th style="text-align:right">Precision</th>
+        <th style="text-align:right">Recall</th><th style="text-align:right">Lift</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <div><div style="font-size:13px;color:var(--ink2);margin-bottom:6px">Case level</div>
+        <table><thead><tr><th></th><th style="text-align:right">Precision</th>
+        <th style="text-align:right">Recall</th><th></th></tr></thead><tbody>${cl}</tbody></table>
+        <div style="font-size:13px;color:var(--ink2);margin:14px 0 4px">Specialised markets</div>
+        <ul style="font-size:13px;color:var(--ink2);margin:0;padding-left:18px">${spec}</ul></div>
+    </div>`;
+}
+
+$("#q").oninput = e => { $("#qv").textContent = (+e.target.value).toFixed(2); load(); };
+$("#cat").onchange = $("#reg").onchange = load;
+$("#t-peer").onclick = ()=>{ MODE="peer"; $("#t-peer").classList.add("on"); $("#t-nat").classList.remove("on"); drawChart(); };
+$("#t-nat").onclick  = ()=>{ MODE="nat";  $("#t-nat").classList.add("on");  $("#t-peer").classList.remove("on"); drawChart(); };
+document.querySelectorAll("[data-v]").forEach(b => b.onclick = async ()=>{
+  if(!SEL) return;
+  await fetch(`/api/cases/${encodeURIComponent(SEL)}/feedback`, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({verdict: b.dataset.v})});
+  $("#fb").textContent = `Marked ${b.dataset.v}. Signal weights will update on the next run.`;
+});
+
+boot();
+</script>
+</body>
+</html>
